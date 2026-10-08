@@ -55,4 +55,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build_audio_notify.ps1
 原生停止重试回归测试已通过。
 上述检查不代表 GUI、真实游戏或设备切换验收通过；本分支的人工验收见 [测试清单](../test/test_game_audio_controls.md)。
 此前独立打包版本在 Windows 11 的游戏和多输出设备验证仅作为移植背景，不能替代此分支的验证。
-Windows 10 与 macOS 不在本次适配和验收范围。
+本次仅支持和验收 Windows 11 x64。
