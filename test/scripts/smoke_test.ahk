@@ -29,6 +29,7 @@
 #Include ../../src/lib/base/locales/zh_hant.ahk
 #Include ../../src/lib/base/server_profile.ahk
 #Include ../../src/lib/base/game_target.ahk
+#Include ../../src/lib/base/game_audio_mute.ahk
 #Include ../../src/lib/base/file_extractor.ahk
 #Include ../../src/lib/base/timing.ahk
 #Include ../../src/lib/base/window.ahk
@@ -38,6 +39,8 @@
 #Include ../../src/lib/base/touch_injection.ahk
 #Include ../../src/lib/base/custom_hotkey_store.ahk
 #Include ../../src/lib/core/game/game_client_registry.ahk
+#Include ../../src/lib/core/audio/audio_notification_bridge.ahk
+#Include ../../src/lib/core/audio/game_mute_controller.ahk
 #Include ../../src/lib/core/diagnostics/log_exporter.ahk
 #Include ../../src/lib/core/launch/app_context.ahk
 #Include ../../src/lib/core/launch/game_auto_start.ahk
@@ -86,6 +89,10 @@ try {
         ExitApp 1
     if !IsSet(UiShell) || !IsSet(TrayController)
         ExitApp 1
+    if !IsSet(GameAudioMute) || !IsSet(GameMuteController) || !IsSet(AudioNotificationBridge)
+        ExitApp 1
+    if GameMuteController.Initialized || GameMuteController.Timer || AudioNotificationBridge.Module
+        ExitApp 1
 
     ; ---- 界面引擎规范化 ----
     if (Constants.NormalizeUiEngine("WEB") != "web")
@@ -112,6 +119,8 @@ try {
             ExitApp 1
         if (item.noActivate != true && item.noActivate != false)
             ExitApp 1
+        if item.HasOwnProp("repeatable") && (item.repeatable != true && item.repeatable != false)
+            ExitApp 1
     }
 
     ; ActionBindings 与 Schema 双向覆盖
@@ -134,6 +143,8 @@ try {
         if (profile.HasOwnProp("OnUp") != item.onUp)
             ExitApp 1
         if (profile.HasOwnProp("NoActivate") != item.noActivate)
+            ExitApp 1
+        if (profile.HasOwnProp("Repeatable") != (item.HasOwnProp("repeatable") && item.repeatable))
             ExitApp 1
     }
 

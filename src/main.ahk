@@ -24,6 +24,7 @@
 #Include ./lib/base/locales/zh_hant.ahk
 #Include ./lib/base/server_profile.ahk
 #Include ./lib/base/game_target.ahk
+#Include ./lib/base/game_audio_mute.ahk
 #Include ./lib/base/file_extractor.ahk
 #Include ./lib/base/timing.ahk
 #Include ./lib/base/window.ahk
@@ -33,6 +34,8 @@
 #Include ./lib/base/touch_injection.ahk
 #Include ./lib/base/custom_hotkey_store.ahk
 #Include ./lib/core/game/game_client_registry.ahk
+#Include ./lib/core/audio/audio_notification_bridge.ahk
+#Include ./lib/core/audio/game_mute_controller.ahk
 #Include ./lib/core/diagnostics/log_exporter.ahk
 #Include ./lib/core/launch/app_context.ahk
 #Include ./lib/core/launch/game_auto_start.ahk
@@ -64,6 +67,7 @@
 #Include ./lib/core/monitor/hook_monitor.ahk
 
 HandleAfaExit(exitReason, exitCode) {
+    GameMuteController.Stop(true)
     Logger.HandleExit(exitReason, exitCode)
     Logger.CloseConsole()
     DllCall("winmm\timeEndPeriod", "UInt", 1)
@@ -163,6 +167,7 @@ class App {
         ; ---- 加载设置 ----
         StartupMark("设置加载")
         SettingsService.Initialize()
+        GameMuteController.Init()
         Logger.RegisterSecret(Config.GetImportant("GitHubToken"))
         Logger.RegisterSecret(A_ScriptFullPath)
         Logger.Info("Startup", "配置加载完成，版本=" Version.Get())

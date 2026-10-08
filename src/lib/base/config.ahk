@@ -43,6 +43,7 @@ class Config {
         "HiddenTabs", "",
         "AutoBeginPause", "0",
         "AutoBeginSpeed", "0",
+        "AutoMuteBackground", "1",
         "BackCeaseOperations", "1",
         "InLevelGuard", "0",
         "DebugEnabled", "0",
