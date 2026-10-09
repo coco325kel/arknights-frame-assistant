@@ -88,6 +88,10 @@ try {
         ExitApp 1
     if !IsSet(UiShell) || !IsSet(TrayController)
         ExitApp 1
+    if !IsSet(GameAudioMute) || !IsSet(GameAudioController)
+        ExitApp 1
+    if GameAudioController.Initialized || GameAudioController.Timer
+        ExitApp 1
 
     ; ---- 界面引擎规范化 ----
     if (Constants.NormalizeUiEngine("WEB") != "web")
@@ -114,6 +118,8 @@ try {
             ExitApp 1
         if (item.noActivate != true && item.noActivate != false)
             ExitApp 1
+        if item.HasOwnProp("repeatable") && (item.repeatable != true && item.repeatable != false)
+            ExitApp 1
     }
 
     ; ActionBindings 与 Schema 双向覆盖
@@ -137,6 +143,8 @@ try {
             ExitApp 1
         if (profile.HasOwnProp("NoActivate") != item.noActivate)
             ExitApp 1
+        if (profile.HasOwnProp("Repeatable") != (item.HasOwnProp("repeatable") && item.repeatable))
+            ExitApp 1
     }
 
     ; 分组 Map 与 Schema 一致
@@ -154,7 +162,7 @@ try {
     if (Config.IniFile != "" || Theme._Ready || Theme._SubclassPtr)
         ExitApp 1
 
-    SmokeAudioShortcuts()
+    SmokeAudioBatch()
     FileAppend("PASS: smoke contracts and no initialization`n", "*", "UTF-8")
     ExitApp 0
 } catch as err
@@ -167,79 +175,126 @@ SmokeFailure(err, *) {
     ExitApp 1
 }
 
-SmokeAudioShortcuts() {
-    first := SmokeAudioSession(1, "default", 0.95)
-    other := SmokeAudioSession(1, "other", 0.3)
-    unrelated := SmokeAudioSession(2, "default", 0.6)
-    snapshot := {sessions: [other, first, unrelated], defaultDevice: "default", failed: 0, message: ""}
-    up := {pid: 1, created: "same", kind: "volume", delta: 0.1}
-    down := {pid: 1, created: "same", kind: "volume", delta: -0.1}
-    mute := {pid: 1, created: "same", kind: "mute", delta: 0}
-    SmokeAudioController.Apply(mute, snapshot)
-    if !first.muted || !other.muted || unrelated.muted
-        throw Error("mute must affect only target PID")
-    SmokeAudioController.Apply(down, snapshot)
-    if Abs(first.level - 0.85) > 0.0001 || first.level != other.level || !first.muted
-        throw Error("down must use default device and preserve mute")
-    first.fail := true
-    result := SmokeAudioController.Apply(up, snapshot)
-    if result.success || !first.muted || other.muted
-        throw Error("failed volume writes must not unmute that session")
-    first.fail := false
-    first.level := 0.95
-    SmokeAudioController.Apply(up, snapshot)
-    SmokeAudioController.Apply(down, snapshot)
-    if Abs(first.level - 0.9) > 0.0001 || first.muted
-        throw Error("FIFO clamping at 100% must preserve opposite steps")
-    first.level := 0.05
-    SmokeAudioController.Apply(down, snapshot)
-    SmokeAudioController.Apply(up, snapshot)
-    if Abs(first.level - 0.1) > 0.0001
-        throw Error("FIFO clamping at 0% must preserve opposite steps")
-    up.created := "reused"
-    before := first.level
-    result := SmokeAudioController.Apply(up, snapshot)
-    if result.success || first.level != before || unrelated.level != 0.6
-        throw Error("PID reuse or unrelated volume was not protected")
-    result := SmokeAudioController.Apply(mute, {sessions: [], defaultDevice: "", failed: 0, message: ""})
-    if result.found || !result.success
-        throw Error("no session must return an observable empty result")
-    first.readFail := true, other.muted := false
-    snapshot.sessions := [first, other, unrelated]
-    result := SmokeAudioController.Apply(mute, snapshot)
-    if result.success || !other.muted
-        throw Error("one unreadable mute session must not block healthy sessions")
-    up.created := "same", other.level := 0.4
-    result := SmokeAudioController.Apply(up, snapshot)
-    if result.success || Abs(other.level - 0.5) > 0.0001
-        throw Error("unreadable reference must fall back to other available sessions")
-    if GameAudioController.Timer || GameAudioController.Actions.Length
-        throw Error("audio must have no initialization side effects")
-    FileAppend("PASS: audio PID isolation, 10-point steps, boundaries and partial failure`n", "*", "UTF-8")
+SmokeAudioBatch() {
+    SmokeAudioHotkeys.ActionGameVolumeUp("")
+    if SmokeAudioHotkeys.Delta != 0.1
+        throw Error("volume-up hotkey must request 10 percentage points")
+    SmokeAudioHotkeys.ActionGameVolumeDown("")
+    if SmokeAudioHotkeys.Delta != -0.1
+        throw Error("volume-down hotkey must request 10 percentage points")
+    capture := GameAudioMute.GetOwnPropDesc("Capture")
+    release := GameAudioMute.GetOwnPropDesc("ReleaseSnapshot")
+    clients := GameClientRegistry.GetOwnPropDesc("GetClients")
+    scans := 0
+    session := SmokeAudioSession()
+    snapshot := {sessions: [session], devices: Map("device", true), defaultDevice: "device", total: 1, failed: 0, message: ""}
+    CaptureBatch(*) {
+        scans++
+        return snapshot
+    }
+    try {
+        GameAudioMute.DefineProp("Capture", {Call: CaptureBatch})
+        GameAudioMute.DefineProp("ReleaseSnapshot", {Call: (*) => 0})
+        GameClientRegistry.DefineProp("GetClients", {Call: (*) => [{pid: 1}]})
+        SmokeAudioController.States := Map()
+        SmokeAudioController.Actions := []
+        SmokeAudioController.Notices := []
+        SmokeAudioController.AutoEnabled := false
+        SmokeAudioController.Initialized := true
+        for delta in [0.1, 0.1, -0.1, -0.1]
+            SmokeAudioController.Actions.Push({pid: 1, kind: "volume", delta: delta, created: "created", callback: 0})
+        SmokeAudioController.Tick()
+        if scans != 1
+            throw Error("four queued volume actions must use one snapshot; scans=" scans)
+        if Abs(session.level - 0.4) > 0.0001 || SmokeAudioController.Actions.Length
+            throw Error("queued volume actions must remain ordered and complete")
+        session.level := 1
+        for delta in [0.1, -0.1]
+            SmokeAudioController.Actions.Push({pid: 1, kind: "volume", delta: delta, created: "created", callback: 0})
+        SmokeAudioController.Tick()
+        if Abs(session.level - 0.9) > 0.0001
+            throw Error("opposite actions at the upper boundary must not cancel")
+        session.level := 0
+        for delta in [-0.1, 0.1]
+            SmokeAudioController.Actions.Push({pid: 1, kind: "volume", delta: delta, created: "created", callback: 0})
+        SmokeAudioController.Tick()
+        if Abs(session.level - 0.1) > 0.0001
+            throw Error("opposite actions at the lower boundary must not cancel")
+        if SmokeAudioController.BurstUntil
+            throw Error("successful volume actions must not start device-rescan bursts")
+        state := SmokeAudioController.States[1]
+        state.manual := true
+        SmokeAudioController.Reconcile(1, state, snapshot, true)
+        session.failVolume := true
+        result := SmokeAudioController._Execute({pid: 1, kind: "volume", delta: 0.1, created: "created"}, snapshot)
+        if state.manual || !session.muted || result.volumeFailed != 1
+            throw Error("failed Up must clear manual intent but keep the session muted")
+        session.failVolume := false
+        SmokeAudioController._Execute({pid: 1, kind: "volume", delta: -0.1, created: "created"}, snapshot)
+        if session.muted || Abs(session.level) > 0.0001
+            throw Error("Down must finish the pending Up at the latest target")
+        SmokeAudioController.AutoEnabled := true
+        SmokeAudioController._Execute({pid: 1, kind: "volume", delta: 0.1, created: "created"}, snapshot)
+        if !session.muted
+            throw Error("background auto-mute must survive volume Up")
+        SmokeAudioController.AutoEnabled := false
+        before := session.level
+        result := SmokeAudioController._Execute({pid: 1, kind: "volume", delta: 0.1, created: "old"}, snapshot)
+        if result.success || session.level != before
+            throw Error("stale queued identity must not change a session")
+        SmokeAudioController.States := Map()
+        before := scans
+        SmokeAudioController.Tick()
+        if scans != before
+            throw Error("idle controller with no mute/volume/restore intent must not scan audio")
+        GameClientRegistry.DefineProp("GetClients", {Call: (*) => [{pid: 1}, {pid: 2}]})
+        SmokeAudioController.DisappearAfterBatch := true
+        SmokeAudioController.Actions.Push({pid: 1, kind: "volume", delta: 0.1, created: "created", callback: 0})
+        completed := []
+        SmokeAudioController._SyncClients(completed)
+        if completed.Length != 1 || completed[1].result.success || scans != before
+            throw Error("disappearing action with another idle PID must report failure without scanning")
+        FileAppend("PASS: audio batches, ordered 10-point steps and boundaries`n", "*", "UTF-8")
+    } finally {
+        GameAudioMute.DefineProp("Capture", capture)
+        GameAudioMute.DefineProp("ReleaseSnapshot", release)
+        GameClientRegistry.DefineProp("GetClients", clients)
+    }
+}
+
+class SmokeAudioHotkeys extends HotkeyActions {
+    static Delta := 0
+    static _QueueGameAudio(kind, delta) => this.Delta := delta
 }
 
 class SmokeAudioController extends GameAudioController {
-    static Identity(pid) => "same"
+    static GonePid := 0
+    static DisappearAfterBatch := false
+    static Identity(pid) => pid = this.GonePid ? "" : "created"
+    static GetState(pid, expectedCreated := "") {
+        created := this.Identity(pid)
+        if StrLen(created) = 0 || (StrLen(expectedCreated) > 0 && expectedCreated != created)
+            throw Error("stale identity")
+        state := this.StateFor(this.States, pid, created)
+        if this.DisappearAfterBatch && StrLen(expectedCreated) > 0
+            this.GonePid := pid
+        return state
+    }
+    static UpdateTargets(targets) {
+    }
+    static _Schedule() {
+    }
 }
+
 class SmokeAudioSession {
-    __New(pid, device, level) {
-        this.pid := pid, this.device := device, this.level := level
-        this.status := 1, this.muted := false, this.fail := false, this.readFail := false
-    }
-    GetVolume() {
-        if this.readFail
-            throw Error("test read failure")
-        return this.level
-    }
-    GetMute() {
-        if this.readFail
-            throw Error("test read failure")
-        return this.muted
-    }
-    SetMute(value) => this.muted := value
+    device := "device", id := "session", instance := "instance", pid := 1, status := 1
+    level := 0.4, muted := false, failVolume := false
+    GetVolume() => this.level
     SetVolume(value) {
-        if this.fail
-            throw Error("test volume failure")
+        if this.failVolume
+            throw Error("unavailable session")
         this.level := value
     }
+    GetMute() => this.muted
+    SetMute(value) => this.muted := value
 }

@@ -110,7 +110,7 @@ class GuiManager {
     static GuiImportantKeys := ["Frame", "AutoExit", "AutoOpenSettings", "ExitOnWindowClose",
         "DefaultStrongHoldProtocol", "TabOrder", "HiddenTabs", "AutoRunGame", "AutoStartWithGame", "GamePath",
         "UpdateChannel", "UpdateSource", "AutoUpdate", "UseGitHubToken", "GitHubToken", "AutoBeginPause", "AutoBeginSpeed",
-        "BackCeaseOperations", "InLevelGuard", "DebugEnabled", "Language", "ThemeMode"]
+        "BackCeaseOperations", "InLevelGuard", "DebugEnabled", "Language", "ThemeMode", "AutoMuteBackground"]
 
     ; 初始化GUI（单例模式）
     static Init() {
@@ -367,7 +367,6 @@ class GuiManager {
         Theme.Add(this.MainGui, "GroupBox", "x0 y35 w" this.ColWidth " h0 Section vQuickLeftGroup", "")
         this.QuickControls.Push(this.MainGui["QuickLeftGroup"])
 
-        quickBottom := 35
         for i, item in quickItems {
             if (i = quickHalf + 1) {
                 ; 快捷操作 - 右列
@@ -375,20 +374,24 @@ class GuiManager {
                 this.QuickControls.Push(this.MainGui["QuickRightGroup"])
                 bindColX := this.ColWidth
             }
-            row := AddBindRow(I18n.T(item.nameKey), item.id, bindColX, item.descKey)
-            this.QuickControls.Push(row*)
-            for control in row {
-                control.GetPos(, &quickY, , &quickH)
-                quickBottom := Max(quickBottom, quickY + quickH)
-            }
+            this.QuickControls.Push(AddBindRow(I18n.T(item.nameKey), item.id, bindColX, item.descKey)*)
         }
-        ; 空白占位
-        placeholderQuick := Theme.Add(this.MainGui, "Text", "xs+45 y+-10 w90 h0 Right +0x200")
-        this.QuickControls.Push(placeholderQuick)
+        quickBottom := 35
+        for control in this.QuickControls {
+            control.GetPos(, &quickY, , &quickH)
+            quickBottom := Max(quickBottom, quickY + quickH)
+        }
+        quickBottom := Max(quickBottom, this._BottomBaseY)
+        checkboxAutoMute := Theme.Add(this.MainGui, "Checkbox", "x16 y" (quickBottom + 16) " w" (this.GuiWidth - 32) " h24 vAutoMuteBackground",
+            I18n.T("游戏在后台时自动静音"))
+        checkboxAutoMute.Value := Config.GetImportant("AutoMuteBackground")
+        checkboxAutoMute.OnEvent("Click", (*) => this.TrackChange("AutoMuteBackground"))
+        StatusBarHints.Register(checkboxAutoMute, "游戏切到后台时自动静音，回到前台恢复；手动静音优先")
+        this.QuickControls.Push(checkboxAutoMute)
 
         ; 快捷操作提示语
         Theme.SetFont(this.MainGui, "s9 cAccent")
-        hintQuick1 := Theme.Add(this.MainGui, "Text", "x0 y" (quickBottom + 20) " w" this.GuiWidth " Center",
+        hintQuick1 := Theme.Add(this.MainGui, "Text", "x0 y+20 w" this.GuiWidth " Center",
             I18n.T("点击输入框修改按键，使用【BACKSPACE/DELETE】清除按键"))
         Theme.SetFont(this.MainGui, "s9 cAccent bold")
         hintQuick3 := Theme.Add(this.MainGui, "Text", "x0 y+8 w" this.GuiWidth " Center", I18n.T("为避免冲突，切换到此页面时“卫戍协议”按键将被禁用"))

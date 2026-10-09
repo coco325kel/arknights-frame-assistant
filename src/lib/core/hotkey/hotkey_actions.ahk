@@ -644,30 +644,47 @@ class HotkeyActions {
             return
     }
 
+    ; 快捷切换开局自动二倍速开关
     static ActionMuteGame(ThisHotkey) => this._QueueGameAudio("mute", 0)
     static ActionGameVolumeUp(ThisHotkey) => this._QueueGameAudio("volume", 0.1)
     static ActionGameVolumeDown(ThisHotkey) => this._QueueGameAudio("volume", -0.1)
 
     static _QueueGameAudio(kind, delta) {
         pid := GameTarget.Pid()
-        hwnd := GameTarget.Hwnd()
-        candidates := [hwnd]
-        if !hwnd {
-            MouseGetPos(, , &hoverHwnd)
-            candidates := [DllCall("GetForegroundWindow", "Ptr"), hoverHwnd]
+        if !pid
+            try pid := WinGetPID(GameTarget.WinTitle())
+        if !pid {
+            this._ShowMuteTip(kind = "mute" ? I18n.T("未找到明日方舟进程，无法静音")
+                : I18n.T("未找到明日方舟进程，无法调整音量"))
+            return
         }
-        GameAudioController.QueueAction(pid, candidates, kind, delta, this._ShowGameAudioResult.Bind(this))
+        GameAudioController.QueueAction(pid, kind, delta, this._ShowGameAudioResult.Bind(this))
     }
 
     static _ShowGameAudioResult(kind, result) {
-        if !result.success
-            message := I18n.T("音频操作未完全成功：{1}", result.message)
-        else if result.found = 0
-            message := I18n.T("未找到明日方舟的音频会话，请确认游戏正在运行")
-        else if kind = "mute"
-            message := result.muted ? I18n.T("已静音明日方舟") : I18n.T("已取消静音明日方舟")
-        else
-            message := I18n.T("明日方舟音量：{1}%", Round(result.volume * 100))
+        if kind = "mute" {
+            if !result.success
+                message := I18n.T("静音失败：{1}", result.message)
+            else if result.found = 0
+                message := I18n.T("未找到明日方舟的音频会话，请确认游戏正在运行")
+            else if !result.manual && result.background
+                message := I18n.T("已取消手动静音，后台自动静音仍生效")
+            else
+                message := result.manual ? I18n.T("已静音明日方舟") : I18n.T("已取消静音明日方舟")
+        } else {
+            message := IsNumber(result.volume) ? I18n.T("明日方舟音量：{1}%", Round(result.volume * 100))
+                : I18n.T("已记录音量调整，等待游戏音频会话")
+            if result.background
+                message .= "`n" I18n.T("后台自动静音仍生效")
+            if result.volumePending && IsNumber(result.volume) && !result.volumeFailed
+                message .= "`n" I18n.T("已记录音量调整，等待游戏音频会话")
+            if result.volumeFailed
+                message .= "`n" I18n.T("部分会话音量未应用，正在重试")
+            if result.muteFailed
+                message .= "`n" I18n.T("部分会话静音状态未同步，正在重试")
+            if result.failed && !result.volumeFailed && !result.muteFailed
+                message .= "`n" I18n.T("音量调整未完全成功：{1}", result.message)
+        }
         this._ShowMuteTip(message)
     }
 

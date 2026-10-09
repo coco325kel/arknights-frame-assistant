@@ -66,6 +66,7 @@
 #Include ./lib/core/monitor/hook_monitor.ahk
 
 HandleAfaExit(exitReason, exitCode) {
+    GameAudioController.Stop(true)
     Logger.HandleExit(exitReason, exitCode)
     Logger.CloseConsole()
     DllCall("winmm\timeEndPeriod", "UInt", 1)
@@ -165,6 +166,7 @@ class App {
         ; ---- 加载设置 ----
         StartupMark("设置加载")
         SettingsService.Initialize()
+        GameAudioController.Init()
         Logger.RegisterSecret(Config.GetImportant("GitHubToken"))
         Logger.RegisterSecret(A_ScriptFullPath)
         Logger.Info("Startup", "配置加载完成，版本=" Version.Get())

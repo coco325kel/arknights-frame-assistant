@@ -83,6 +83,7 @@ class Constants {
         "HiddenTabs", "隐藏的标签页",
         "AutoBeginPause", "开局自动暂停",
         "AutoBeginSpeed", "开局自动二倍速",
+        "AutoMuteBackground", "游戏在后台时自动静音",
         "BackCeaseOperations", "使用“返回上级菜单”放弃行动",
         "InLevelGuard", "在非战斗关卡场景禁用常规战斗热键",
         "DebugEnabled", "显示调试日志控制台",

@@ -82,9 +82,13 @@ class GameClientRegistry {
         this._RefreshInProgress := true
         try {
             newClients := Map()
+            previousHiddenWindows := A_DetectHiddenWindows
             try {
+                DetectHiddenWindows true
                 hwnds := WinGetList("ahk_exe Arknights.exe")
                 for hwnd in hwnds {
+                    if !DllCall("IsWindowVisible", "Ptr", hwnd)
+                        continue
                     try pid := WinGetPID("ahk_id " hwnd)
                     catch Error
                         continue
@@ -101,6 +105,8 @@ class GameClientRegistry {
                 }
             } catch Error as e {
                 Logger.Warn("GameClientRegistry", "枚举游戏客户端失败：" e.Message)
+            } finally {
+                DetectHiddenWindows previousHiddenWindows
             }
 
             if (this._ClientsChanged(newClients)) {

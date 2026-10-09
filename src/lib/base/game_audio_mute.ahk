@@ -1,7 +1,7 @@
-; COM 接口只在单次快照内存活。
+; COM 接口只在单次快照内存活；恢复记录只保存会话身份与原始静音值。
 class GameAudioSession {
-    __New(device, pid, status, volume) {
-        this.device := device
+    __New(device, id, instance, pid, status, volume) {
+        this.device := device, this.id := id, this.instance := instance
         this.pid := pid, this.status := status, this.volume := volume
     }
     GetMute() {
@@ -42,6 +42,8 @@ class GameAudioSession {
     }
 }
 class GameAudioMute {
+    static ScanCount := 0
+    static WriteCount := 0
     static CLSID_MMDeviceEnumerator := "{BCDE0395-E52F-467C-8E3D-C4579291692E}"
     static IID_IMMDeviceEnumerator := "{A95664D2-9614-4F35-A746-DE8DB63617E6}"
     static IID_IAudioSessionManager2 := "{77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F}"
@@ -64,7 +66,8 @@ class GameAudioMute {
         finally DllCall("ole32\CoTaskMemFree", "Ptr", value)
     }
     static Capture(targets) {
-        snapshot := {sessions: [], defaultDevice: "", failed: 0, message: ""}
+        this.ScanCount++
+        snapshot := {sessions: [], devices: Map(), defaultDevice: "", failed: 0, message: ""}
         enumerator := 0, collection := 0
         try {
             clsid := this._GuidBuffer(this.CLSID_MMDeviceEnumerator)
@@ -115,6 +118,7 @@ class GameAudioMute {
     }
     static _Device(device, targets, snapshot) {
         deviceId := this._String(device, 5)
+        snapshot.devices[deviceId] := false
         manager := 0, sessions := 0
         try {
             iid := this._GuidBuffer(this.IID_IAudioSessionManager2)
@@ -130,6 +134,7 @@ class GameAudioMute {
                 throw Error(this._FormatHResult(hr))
             controlIid := this._GuidBuffer(this.IID_IAudioSessionControl2)
             volumeIid := this._GuidBuffer(this.IID_ISimpleAudioVolume)
+            complete := true
             Loop count {
                 control := 0, control2 := 0, volume := 0
                 try {
@@ -144,7 +149,7 @@ class GameAudioMute {
                     if hr = 0x0889000D
                         continue
                     if hr < 0 {
-                        snapshot.failed++, snapshot.message := this._FormatHResult(hr)
+                        complete := false, snapshot.failed++, snapshot.message := this._FormatHResult(hr)
                         continue
                     }
                     if !pid || !targets.Has(pid)
@@ -153,15 +158,16 @@ class GameAudioMute {
                     hr := ComCall(3, control2, "Int*", &status, "Int")
                     if hr < 0
                         throw Error(this._FormatHResult(hr))
-                    if status = 2
-                        continue
-                    hr := ComCall(0, control2, "Ptr", volumeIid, "Ptr*", &volume, "Int")
-                    if hr < 0
-                        throw Error(this._FormatHResult(hr))
-                    snapshot.sessions.Push(GameAudioSession(deviceId, pid, status, volume))
+                    id := this._String(control2, 12), instance := this._String(control2, 13)
+                    if status != 2 {
+                        hr := ComCall(0, control2, "Ptr", volumeIid, "Ptr*", &volume, "Int")
+                        if hr < 0
+                            throw Error(this._FormatHResult(hr))
+                    }
+                    snapshot.sessions.Push(GameAudioSession(deviceId, id, instance, pid, status, volume))
                     volume := 0 ; 接口所有权移交给快照
                 } catch Error as e {
-                    snapshot.failed++, snapshot.message := e.Message
+                    complete := false, snapshot.failed++, snapshot.message := e.Message
                 } finally {
                     if volume
                         ComCall(2, volume)
@@ -171,6 +177,7 @@ class GameAudioMute {
                         ComCall(2, control)
                 }
             }
+            snapshot.devices[deviceId] := complete
         } finally {
             if sessions
                 ComCall(2, sessions)
