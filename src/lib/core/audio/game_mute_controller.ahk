@@ -370,20 +370,30 @@ class GameMuteController {
             previous: false, message: message, pending: 0, volume: "", volumeFailed: 0,
             muteFailed: 0, volumePending: 0, manual: false, background: false}
     }
-    static _Execute(action) {
+    static _Execute(action, snapshot) {
         try {
             if !action.pid
                 return this._Failure("未指定目标进程")
-            if StrLen(action.created) > 0 && this.Identity(action.pid) != action.created
-                return this._Failure("游戏进程已退出或重启，未操作旧会话")
+            state := this.GetState(action.pid, action.created)
             switch action.kind {
-                case "mute": return this.Toggle(action.pid, action.created)
+                case "mute":
+                    state.manual := !state.manual
+                    state.volumeUnmute := false
+                    for _, record in state.sessions
+                        record.manualEnforced := false
+                    if !state.manual
+                        this.RequestUnmute(state)
+                    result := this.Reconcile(action.pid, state, snapshot,
+                        this.ShouldMute(state.manual, GameClientRegistry.ForegroundPid != action.pid, this.AutoEnabled))
                 case "volume":
                     if !IsNumber(action.delta)
                         return this._Failure("无效的音量变化值")
-                    return this.AdjustVolume(action.pid, action.delta, action.created)
+                    result := this.AdjustSnapshot(action.pid, state, snapshot, action.delta)
                 default: return this._Failure("无效的音频操作")
             }
+            if !result.success || result.volumePending || result.pending
+                this.BurstUntil := A_TickCount + 2000
+            return result
         } catch Error as e {
             return this._Failure(e.Message)
         }
@@ -406,14 +416,8 @@ class GameMuteController {
                 this.AutoEnabled := Config.ReadImportantFromIni("AutoMuteBackground") = "1"
             }
             this._ApplyNotices()
-            Loop 4 {
-                if !this.Actions.Length || this.StopRequested
-                    break
-                action := this.Actions.RemoveAt(1)
-                completed.Push({action: action, result: this._Execute(action)})
-            }
             if !this.StopRequested
-                this._SyncClients()
+                this._SyncClients(completed)
         } catch Error as e {
             this.Warn("tick", "静音巡检失败：" e.Message)
         } finally {
@@ -441,11 +445,21 @@ class GameMuteController {
             }
         }
     }
-    static _SyncClients() {
+    static _SyncClients(completed) {
         for client in GameClientRegistry.GetClients() {
             try this.GetState(client.pid)
             catch Error as e
                 this.Warn("identity-" client.pid, e.Message)
+        }
+        batch := []
+        Loop Min(4, this.Actions.Length) {
+            action := this.Actions.RemoveAt(1)
+            try {
+                action.created := this.GetState(action.pid, action.created).created
+                batch.Push(action)
+            } catch Error as e {
+                completed.Push({action: action, result: this._Failure(e.Message)})
+            }
         }
         targets := Map(), gone := []
         for pid, state in this.States {
@@ -464,11 +478,40 @@ class GameMuteController {
         for pid in gone
             this.States.Delete(pid)
         this.UpdateTargets(targets)
-        if !targets.Count
+        if !targets.Count {
+            for action in batch
+                completed.Push({action: action, result: this._Failure("游戏进程已退出或重启，未操作旧会话")})
             return
-        snapshot := GameAudioMute.Capture(targets)
+        }
+        active := Map()
+        for pid in targets {
+            state := this.States[pid]
+            if this.ShouldMute(state.manual, GameClientRegistry.ForegroundPid != pid, this.AutoEnabled)
+                || IsNumber(state.volumeTarget) || state.volumeQueued || state.unmutePending
+                || state.sessions.Count || state.deferred.Count
+                active[pid] := true
+        }
+        for action in batch {
+            if targets.Has(action.pid)
+                active[action.pid] := true
+        }
+        if !active.Count {
+            for action in batch
+                completed.Push({action: action, result: this._Failure("游戏进程已退出或重启，未操作旧会话")})
+            return
+        }
+        snapshot := GameAudioMute.Capture(active)
         try {
-            for pid in targets {
+            handled := Map()
+            for action in batch {
+                if this.StopRequested
+                    break
+                completed.Push({action: action, result: this._Execute(action, snapshot)})
+                handled[action.pid] := true
+            }
+            for pid in active {
+                if this.StopRequested || handled.Has(pid)
+                    continue
                 state := this.States[pid]
                 if this.Identity(pid) != state.created
                     continue
@@ -479,41 +522,6 @@ class GameMuteController {
             }
         } finally GameAudioMute.ReleaseSnapshot(snapshot)
     }
-    static Sync(pid, state) {
-        snapshot := GameAudioMute.Capture(Map(pid, true))
-        try {
-            if this.Identity(pid) != state.created
-                return this._Failure("游戏进程已退出或重启，未操作旧会话")
-            return this.Reconcile(pid, state, snapshot,
-                this.ShouldMute(state.manual, GameClientRegistry.ForegroundPid != pid, this.AutoEnabled))
-        }
-        finally GameAudioMute.ReleaseSnapshot(snapshot)
-    }
-    static Toggle(pid, expectedCreated := "") {
-        state := this.GetState(pid, expectedCreated)
-        state.manual := !state.manual
-        state.volumeUnmute := false
-        for _, record in state.sessions
-            record.manualEnforced := false
-        if !state.manual
-            this.RequestUnmute(state)
-        result := this.Sync(pid, state)
-        result.manual := state.manual
-        result.background := this.AutoEnabled && GameClientRegistry.ForegroundPid != pid
-        this.BurstUntil := A_TickCount + 2000
-        return result
-    }
-    static AdjustVolume(pid, delta, expectedCreated := "") {
-        state := this.GetState(pid, expectedCreated)
-        snapshot := GameAudioMute.Capture(Map(pid, true))
-        try {
-            if this.Identity(pid) != state.created
-                return this._Failure("游戏进程已退出或重启，未操作旧会话")
-            result := this.AdjustSnapshot(pid, state, snapshot, delta)
-        } finally GameAudioMute.ReleaseSnapshot(snapshot)
-        this.BurstUntil := A_TickCount + 2000
-        return result
-    }
     static Restore(state) {
         snapshot := GameAudioMute.Capture(Map(state.pid, true))
         try {
@@ -523,10 +531,6 @@ class GameMuteController {
             return this.Reconcile(state.pid, state, snapshot, false, state.volumeUnmute)
         }
         finally GameAudioMute.ReleaseSnapshot(snapshot)
-    }
-    static Release(state) {
-        state.sessions.Clear()
-        state.deferred.Clear()
     }
     static JournalPath() {
         SplitPath(Config.IniFile, , &directory)
