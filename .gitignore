@@ -29,3 +29,7 @@ docs/plan
 # Python 工具缓存
 __pycache__/
 *.pyc
+
+# 本机构建的音频通知模块与校验清单
+/src/resources/audio/AudioNotify.dll
+/src/resources/audio/AudioNotify.sha256

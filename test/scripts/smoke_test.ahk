@@ -39,6 +39,7 @@
 #Include ../../src/lib/base/touch_injection.ahk
 #Include ../../src/lib/base/custom_hotkey_store.ahk
 #Include ../../src/lib/core/game/game_client_registry.ahk
+#Include ../../src/lib/core/audio/audio_notification_bridge.ahk
 #Include ../../src/lib/core/audio/game_audio_controller.ahk
 #Include ../../src/lib/core/diagnostics/log_exporter.ahk
 #Include ../../src/lib/core/launch/app_context.ahk
@@ -88,9 +89,9 @@ try {
         ExitApp 1
     if !IsSet(UiShell) || !IsSet(TrayController)
         ExitApp 1
-    if !IsSet(GameAudioMute) || !IsSet(GameAudioController)
+    if !IsSet(GameAudioMute) || !IsSet(GameAudioController) || !IsSet(AudioNotificationBridge)
         ExitApp 1
-    if GameAudioController.Initialized || GameAudioController.Timer
+    if GameAudioController.Initialized || GameAudioController.Timer || AudioNotificationBridge.Module
         ExitApp 1
 
     ; ---- 界面引擎规范化 ----

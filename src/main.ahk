@@ -34,6 +34,7 @@
 #Include ./lib/base/touch_injection.ahk
 #Include ./lib/base/custom_hotkey_store.ahk
 #Include ./lib/core/game/game_client_registry.ahk
+#Include ./lib/core/audio/audio_notification_bridge.ahk
 #Include ./lib/core/audio/game_audio_controller.ahk
 #Include ./lib/core/diagnostics/log_exporter.ahk
 #Include ./lib/core/launch/app_context.ahk

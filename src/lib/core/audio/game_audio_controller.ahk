@@ -8,8 +8,12 @@ class GameAudioController {
     static BurstUntil := 0
     static Interval := 0
     static AutoEnabled := true
+    static Degraded := true
+    static TargetSignature := ""
     static Warnings := Map()
+    static Notifications := 0
     static Actions := []
+    static Notices := []
     static SettingsPending := false
     static SyncPending := false
     static StopRequested := false
@@ -265,6 +269,8 @@ class GameAudioController {
             this.WakeQueued := false
             this.SyncPending := false
             this.Actions := []
+            this.Notices := []
+            this.TargetSignature := "?"
             this.BurstUntil := 0
             this.Timer := this.Tick.Bind(this)
             this.WakeTimer := this._Wake.Bind(this)
@@ -273,6 +279,7 @@ class GameAudioController {
             EventBus.Subscribe("ForegroundClientChanged", this.SyncCallback)
             EventBus.Subscribe("GameClientsChanged", this.SyncCallback)
             this.Initialized := true
+            this.Degraded := !AudioNotificationBridge.Start()
             this.RefreshSettings()
             this._Schedule()
         } finally Thread "NoTimers", false
@@ -292,6 +299,28 @@ class GameAudioController {
         this._QueueWake()
         return true
     }
+    static Notify(kind, detail, *) {
+        if !this.Initialized || this.StopRequested
+            return
+        this.Notices.Push({kind: kind, detail: detail})
+        this.RequestSync()
+    }
+    static _ApplyNotices() {
+        Loop 32 {
+            if !this.Notices.Length
+                break
+            notice := this.Notices.RemoveAt(1)
+            this.Notifications++
+            if notice.kind = 4 {
+                this.Degraded := true
+                this.Warn("notification", "音频通知已降级为 250ms 巡检：" GameAudioMute._FormatHResult(notice.detail))
+            } else if notice.kind = 5 {
+                this.Degraded := false
+                Logger.Info("GameMute", "音频通知已恢复")
+            }
+            this.BurstUntil := A_TickCount + 2000
+        }
+    }
     static _QueueWake() {
         if !this.Initialized || this.StopRequested || this.WakeQueued
             return
@@ -305,7 +334,7 @@ class GameAudioController {
     static _Schedule() {
         if !this.Initialized || this.StopRequested
             return
-        next := 500
+        next := this.Degraded ? 250 : (A_TickCount < this.BurstUntil ? 100 : 1000)
         if next != this.Interval {
             this.Interval := next
             SetTimer(this.Timer, next)
@@ -316,6 +345,19 @@ class GameAudioController {
             return
         this.SyncPending := true
         this._QueueWake()
+    }
+    static UpdateTargets(targets) {
+        signature := ""
+        for pid in targets
+            signature .= pid ":" this.States[pid].created ";"
+        if signature = this.TargetSignature
+            return
+        if AudioNotificationBridge.UpdateTargets(targets) {
+            this.TargetSignature := signature
+        } else {
+            this.Degraded := true
+            this.Warn("targets", "更新音频通知目标失败，已退回 250ms 巡检")
+        }
     }
     static _Failure(message) {
         return {success: false, found: 0, failed: 1,
@@ -367,6 +409,7 @@ class GameAudioController {
                 this.SettingsPending := false
                 this.AutoEnabled := Config.ReadImportantFromIni("AutoMuteBackground") = "1"
             }
+            this._ApplyNotices()
             if !this.StopRequested
                 this._SyncClients(completed)
         } catch Error as e {
@@ -389,7 +432,7 @@ class GameAudioController {
                         this.Stop()
                     } else {
                         this._Schedule()
-                        if this.Actions.Length || this.SyncPending || this.SettingsPending
+                        if this.Actions.Length || this.Notices.Length || this.SyncPending || this.SettingsPending
                             this._QueueWake()
                     }
                 } finally Thread "NoTimers", false
@@ -428,6 +471,7 @@ class GameAudioController {
         }
         for pid in gone
             this.States.Delete(pid)
+        this.UpdateTargets(targets)
         active := Map()
         for pid in targets {
             state := this.States[pid]
@@ -539,6 +583,7 @@ class GameAudioController {
             return
         }
         if !this.Initialized && !this.States.Count {
+            AudioNotificationBridge.Stop()
             return
         }
         Thread "NoTimers"
@@ -554,14 +599,17 @@ class GameAudioController {
                 EventBus.Unsubscribe("GameClientsChanged", this.SyncCallback)
             }
             this.Actions := []
+            this.Notices := []
             this.WakeQueued := false
             this.SyncPending := false
             this.SettingsPending := false
             this.Interval := 0
+            this.TargetSignature := ""
             this.BurstUntil := 0
             this.Timer := 0
             this.WakeTimer := 0
             this.SyncCallback := 0
+            AudioNotificationBridge.Stop()
             for pid, state in this.States {
                 if !state.manual && this.Identity(pid) = state.created {
                     try this.Restore(state)
@@ -573,7 +621,7 @@ class GameAudioController {
             this.States.Clear()
             this.StopRequested := false
             Logger.Info("GameMute", "静音统计：扫描=" GameAudioMute.ScanCount " 写入=" GameAudioMute.WriteCount
-                " 巡检间隔=500ms")
+                " 通知=" this.Notifications " 降级=" (this.Degraded ? "1" : "0"))
         } finally Thread "NoTimers", false
         if this.RestartRequested {
             this.RestartRequested := false
