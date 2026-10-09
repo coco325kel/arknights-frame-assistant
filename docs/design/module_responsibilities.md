@@ -38,6 +38,7 @@
 | `base/custom_hotkey_store.ahk` | `CustomHotkeys.json` 唯一 owner（自定义按键独立存储，与 Settings.ini 隔离）。UTF-8 JSON v2、写定式（键序固定 `key/name/func/arg/type`，func=按键功能码、arg=参数文本）+ 字符集白名单 + 严格正则读取；解析失败备份 `.bak` 并回退空列表（v1 脚本格式不迁移，按损坏处理）；写入走临时文件 + `ReplaceFileW` 原子替换；清空写空数组不删文件 |
 | `base/token_protector.ahk` | GitHub Token 的 Windows DPAPI 加密保护（`TokenProtector` 类）。`Protect()` 用 `CryptProtectData`（CurrentUser）加密并 Base64 编码，返回带 `dpapi:v1:` 前缀的存储值；`Unprotect()` 解密，无前缀值按旧版明文处理（供迁移）。内存缓冲用 `_SecureZero` 清零。由 `config.ahk` 的 `_ReadGitHubToken`/`MigrateGitHubToken`（启动时把旧版明文迁移为加密值）调用，加密值存于 `[Main]` 的 `GitHubTokenProtected` 键 |
 | `base/eventbus.ahk` | 发布/订阅事件总线，模块间解耦。事件清单见 [reference.md](reference.md#eventbus-事件清单) |
+| `base/game_audio_mute.ahk` | Core Audio 全部活动输出会话快照、会话静音/音量读写与单次快照 COM 释放；不持有跨轮接口、不识别客户端策略 |
 | `base/file_extractor.ahk` | 管理编译时 `FileInstall` 嵌入资源的运行时提取。`EnsureExtracted()` 将 `logo.ico`（含大小校验防旧版残留）、三张 `TakeOverButton_*.png`（代理作战按钮图像）和关卡检测模板（保留备用，PixelSearch 方案不依赖）统一提取到 `%AppData%\ArknightsFrameAssistant\PC\resources\` |
 | `base/game_target.ahk` | 「当前目标游戏窗口」的唯一 owner：`Hwnd`/`Pid`/`ExePath`/`ServerId`。未绑定客户端实例时宽松回退旧语义 `ahk_exe Arknights.exe`（决策 D2），保证升级零回归、降级不弹窗；**禁止其他模块再直接写 `"ahk_exe Arknights.exe"`**。只持有状态与查询 API，绑定/仲裁由 `core/game/game_client_registry.ahk` 驱动 |
 | `base/server_profile.ahk` | 区服元数据与识别的唯一 owner（纯数据 + 纯函数，不引用 core/ui、无副作用）。从安装目录/可执行文件推断区服并给出对应 Unity PlayerPrefs 注册表根。多区服细节见 [key_designs_hotkey.md](key_designs_hotkey.md#多区服与热路径预算) |
@@ -77,6 +78,8 @@
 | `core/updater/` | 自动更新全流程：`release_repository.ahk`（GitHub/国内源检查与 changelog 缓存）→ `version_checker.ahk`（门面：首选源/重试/降级）→ `downloader.ahk` → `self_replacer.ahk` → `updater_manager.ahk`（协调器，事件化）；`github_token_service.ahk` 提供 Token 验证（`Validate()`，超时 5000ms，带校验状态缓存）。`ui/updater_ui.ahk` 仅通过事件与 Updater 交互。详见 [key_designs_base.md](key_designs_base.md#双源更新与自动降级) |
 | `core/changelog/changelog_checker.ahk` | 更新公告检查。订阅 `ChangelogShowRequested`，构建 body（经 `ChangelogFormat.LocalizeBody` 裁剪语言）后发布 `ChangelogAvailable` |
 | `core/diagnostics/log_exporter.ahk` | 诊断压缩包导出（`LogExporter` 类）。`CreateArchiveInteractive()` 弹出文件保存对话框，收集所有日志 + 脱敏后的设置文件 + 诊断信息，通过 PowerShell 打包为 ZIP。`OpenLogDirectory()` 打开日志目录 |
+
+音频域 `core/audio/game_audio_controller.ahk` 管理 PID + 创建时间、静音恢复记录、目标音量和定时器动作队列；`core/audio/audio_notification_bridge.ahk` 管理原生资源提取、校验、监听启停和整数消息。原生实现 `src/native/audio_notify.cpp` 在 MTA 线程监听设备及会话，仅向脚本发送消息。构建与巡检降级说明见 [游戏音频控制](../game_audio_controls.md)。
 
 ### ui 层（依赖 core/base）
 
