@@ -31,8 +31,8 @@ class HotkeySchema {
         {id: "CollectCollectibles", nameKey: "肉鸽收取道具", descKey: "快速移动鼠标点击集成战略的“收下”按钮", group: "quick", defaultKey: "", guarded: false, onUp: false, noActivate: false},
         {id: "Back", nameKey: "返回上级菜单", descKey: "模拟点击ESC键，返回上一级菜单", group: "quick", defaultKey: "", guarded: false, onUp: false, noActivate: false},
         {id: "MuteGame", nameKey: "一键静音", descKey: "切换明日方舟静音，不影响其他程序声音", group: "quick", defaultKey: "F8", guarded: false, onUp: false, noActivate: true},
-        {id: "GameVolumeUp", nameKey: "提高游戏音量", descKey: "提高明日方舟音量 5%，并解除手动静音；后台自动静音仍生效", group: "quick", defaultKey: "^Up", guarded: false, onUp: false, noActivate: true, repeatable: true},
-        {id: "GameVolumeDown", nameKey: "降低游戏音量", descKey: "降低明日方舟音量 5%，不改变静音状态", group: "quick", defaultKey: "^Down", guarded: false, onUp: false, noActivate: true, repeatable: true},
+        {id: "GameVolumeUp", nameKey: "提高游戏音量", descKey: "提高明日方舟音量 10%，并解除手动静音；后台自动静音仍生效", group: "quick", defaultKey: "^Up", guarded: false, onUp: false, noActivate: true, repeatable: true},
+        {id: "GameVolumeDown", nameKey: "降低游戏音量", descKey: "降低明日方舟音量 10%，不改变静音状态", group: "quick", defaultKey: "^Down", guarded: false, onUp: false, noActivate: true, repeatable: true},
         ; ---- 卫戍协议 ----
         {id: "CheckEnemies", nameKey: "查看敌人", descKey: "查看敌人信息", group: "strongHold", defaultKey: "", guarded: false, onUp: false, noActivate: false},
         {id: "DispatchCenter", nameKey: "调度中心", descKey: "打开调度中心（商店）", group: "strongHold", defaultKey: "", guarded: false, onUp: false, noActivate: false},

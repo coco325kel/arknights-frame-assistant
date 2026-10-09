@@ -646,8 +646,8 @@ class HotkeyActions {
 
     ; 快捷切换开局自动二倍速开关
     static ActionMuteGame(ThisHotkey) => this._QueueGameAudio("mute", 0)
-    static ActionGameVolumeUp(ThisHotkey) => this._QueueGameAudio("volume", 0.05)
-    static ActionGameVolumeDown(ThisHotkey) => this._QueueGameAudio("volume", -0.05)
+    static ActionGameVolumeUp(ThisHotkey) => this._QueueGameAudio("volume", 0.1)
+    static ActionGameVolumeDown(ThisHotkey) => this._QueueGameAudio("volume", -0.1)
 
     static _QueueGameAudio(kind, delta) {
         pid := GameTarget.Pid()
@@ -689,10 +689,13 @@ class HotkeyActions {
     }
 
     static _ShowMuteTip(message) {
-        HideTrayTip()
-        SetTimer HideTrayTip, 0
-        ShowTrayTip(message, "AFA", "Mute")
-        SetTimer HideTrayTip, -3000
+        static hide := this._HideAudioTip.Bind(this)
+        ToolTip(message, , , 19)
+        SetTimer hide, -1500
+    }
+
+    static _HideAudioTip() {
+        ToolTip(, , , 19)
     }
 
     static ActionBeginSpeedSwitch(ThisHotkey) {
