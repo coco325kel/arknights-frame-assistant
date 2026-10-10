@@ -303,14 +303,8 @@ class GameAudioController {
                 return true
             }
         }
-        if this.Actions.Length >= 16 {
-            for index, pending in this.Actions {
-                if pending.kind = "volume" {
-                    this.Actions.RemoveAt(index)
-                    break
-                }
-            }
-        }
+        if kind = "volume" && this.Actions.Length >= 16
+            return false
         this.Actions.Push({pid: pid, kind: kind, delta: delta, callback: callback, created: created})
         this._QueueWake()
         return true
