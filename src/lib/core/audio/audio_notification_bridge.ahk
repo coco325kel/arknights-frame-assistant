@@ -48,8 +48,8 @@ class AudioNotificationBridge {
             manifest := directory "\AudioNotify.sha256"
             FileInstall "resources\audio\AudioNotify.sha256", manifest, 1
         }
-        digest := StrLower(Trim(FileRead(manifest, "UTF-8")))
-        if !RegExMatch(digest, "^[0-9a-f]{64}$")
+        digest := StrLower(Trim(FileRead(manifest, "UTF-8"), " `t`r`n"))
+        if !RegExMatch(digest, "D)^[0-9a-f]{64}$")
             throw Error("音频通知模块校验清单无效")
         path := directory "\AudioNotify-" digest ".dll"
         if !FileExist(path) || UpdateDownloader._GetFileSha256(path) != digest {
