@@ -295,6 +295,22 @@ class GameAudioController {
             return false
         ; 热键只复制已有身份，进程校验与 COM 枚举由工作定时器执行。
         created := this.States.Has(pid) ? this.States[pid].created : ""
+        if kind = "volume" && this.Actions.Length {
+            last := this.Actions[-1]
+            if last.kind = kind && last.pid = pid && last.created = created && last.delta * delta > 0 {
+                last.delta := Min(1, Max(-1, last.delta + delta))
+                last.callback := callback
+                return true
+            }
+        }
+        if this.Actions.Length >= 16 {
+            for index, pending in this.Actions {
+                if pending.kind = "volume" {
+                    this.Actions.RemoveAt(index)
+                    break
+                }
+            }
+        }
         this.Actions.Push({pid: pid, kind: kind, delta: delta, callback: callback, created: created})
         this._QueueWake()
         return true

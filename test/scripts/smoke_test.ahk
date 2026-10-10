@@ -223,6 +223,23 @@ SmokeAudioBatch() {
             throw Error("opposite actions at the lower boundary must not cancel")
         if SmokeAudioController.BurstUntil
             throw Error("successful volume actions must not start device-rescan bursts")
+        before := scans
+        Loop 100
+            SmokeAudioController.QueueAction(1, "volume", 0.1, 0)
+        if SmokeAudioController.Actions.Length > 16
+            throw Error("repeated volume input must not grow the queue without bound")
+        SmokeAudioController.QueueAction(1, "volume", -0.1, 0)
+        while SmokeAudioController.Actions.Length
+            SmokeAudioController.Tick()
+        if Abs(session.level - 0.9) > 0.0001 || scans - before > 4
+            throw Error("repeated Up must reach 100% before the latest Down, within four batches")
+        Loop 100
+            SmokeAudioController.QueueAction(1, "volume", Mod(A_Index, 2) ? 0.1 : -0.1, 0)
+        if SmokeAudioController.Actions.Length > 16
+            throw Error("alternating repeated volume input must also remain bounded")
+        while SmokeAudioController.Actions.Length
+            SmokeAudioController.Tick()
+        session.level := 0.1
         state := SmokeAudioController.States[1]
         state.manual := true
         SmokeAudioController.Reconcile(1, state, snapshot, true)
@@ -269,6 +286,8 @@ class SmokeAudioHotkeys extends HotkeyActions {
 }
 
 class SmokeAudioController extends GameAudioController {
+    static _QueueWake() {
+    }
     static GonePid := 0
     static DisappearAfterBatch := false
     static Identity(pid) => pid = this.GonePid ? "" : "created"
