@@ -240,6 +240,23 @@ SmokeAudioBatch() {
             SmokeAudioController.Tick()
         session.level := 0.1
         state := SmokeAudioController.States[1]
+        state.manual := true, session.muted := true
+        finished := []
+        RecordPressure(kind, result) => finished.Push({kind: kind, volume: result.volume})
+        SmokeAudioController.QueueAction(1, "volume", 0.1, RecordPressure)
+        Loop 8 {
+            SmokeAudioController.QueueAction(1, "mute", 0, RecordPressure)
+            accepted := SmokeAudioController.QueueAction(1, "volume", -0.1, RecordPressure)
+        }
+        while SmokeAudioController.Actions.Length
+            SmokeAudioController.Tick()
+        muteCount := 0
+        for item in finished
+            muteCount += item.kind = "mute" ? 1 : 0
+        if accepted || finished.Length != 16 || muteCount != 8
+            || Abs(finished[1].volume - 0.2) > 0.0001 || state.manual || session.muted
+            throw Error("queue pressure must not discard Up before later mute toggles")
+        session.level := 0.1
         state.manual := true
         SmokeAudioController.Reconcile(1, state, snapshot, true)
         session.failVolume := true
